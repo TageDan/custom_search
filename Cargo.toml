@@ -1,0 +1,10 @@
+[package]
+name = "custom_search"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+regex = "1.12.3"
+rouille = "3.6.2"
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "1.0.2"
