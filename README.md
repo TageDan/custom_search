@@ -12,3 +12,16 @@ sent as a response for the request to the endpoint.
 The Regex crate is used for:
 Regex capture groups are used to capture variables and regex expand is used to replace them in the query
 generation template.
+
+## Example
+The following may be added to `~/.config/custom_search/config.toml`:
+```toml
+[[endpoint]]
+endpoint = "translate"
+parse_rule = '\[(..)\]\[(..)\](.+)'
+gen_rule = "https://translate.google.com/?sl=$1&tl=$2&text=$3"
+```
+And a custom firefox search `http://localhost:8000/translate?q=%s`
+With the keyword `tr`
+
+Now translating english to swedish is as easy as searching `@tr [en][sv] hello`
