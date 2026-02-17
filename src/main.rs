@@ -30,6 +30,7 @@ fn main() {
     config_file.push("custom_search");
     config_file.push("config.toml");
 
+    println!("listening to localhost:8000");
     rouille::start_server("localhost:8000", move |req| {
         router!(req,
                 (GET) (/{endpoint: String}) => {
@@ -64,7 +65,6 @@ fn parse(ep: String, q: String, config_file: &PathBuf) -> Result<String, Box<dyn
             let regex = Regex::new(&parse_rule)?;
             if let Some(captures) = regex.captures(&q) {
                 let mut result = String::new();
-                println!("{:?}", captures);
                 captures.expand(&gen_rule, &mut result);
                 return Ok(result);
             }
