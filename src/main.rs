@@ -24,11 +24,24 @@ struct CustomSearch {
     gen_rule: String,
 }
 
-fn main() {
-    let mut config_file = std::env::home_dir().unwrap();
-    config_file.push(".config");
-    config_file.push("custom_search");
+fn main() -> Result<(), Box<dyn Error>> {
+    let mut config_dir = std::env::home_dir().ok_or("No home dir in env")?;
+
+    config_dir.push(".config");
+    config_dir.push("custom_search");
+
+    // if config dir doesn't exists then create it
+    if !std::path::Path::new(&config_dir).is_dir() {
+        std::fs::create_dir_all(&config_dir)?;
+    }
+
+    let mut config_file = config_dir;
     config_file.push("config.toml");
+
+    // if config file doesn't exists then create it
+    if !std::path::Path::new(&config_file).exists() {
+        std::fs::File::create(&config_file)?;
+    }
 
     println!("listening to localhost:8000");
     rouille::start_server("localhost:8000", move |req| {
