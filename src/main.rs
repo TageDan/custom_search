@@ -1,7 +1,13 @@
 use regex::Regex;
 use rouille::{Response, router};
 use serde::Deserialize;
-use std::{collections::HashMap, error::Error, io::Read, path::PathBuf};
+use std::{
+    error::Error,
+    fs::File,
+    io::Read,
+    net::{Ipv4Addr, SocketAddrV4},
+    path::PathBuf,
+};
 use toml::from_str;
 
 /// simpler_custom_search is an application that provides a simpler way to create simpler search strings.
@@ -17,7 +23,16 @@ use toml::from_str;
 /// Regex capture groups are used to capture variables and regex expand is used to replace them in the query
 /// generation template.
 
-#[derive(Deserialize)]
+/// Struct representing the contents of the config file
+#[derive(Deserialize, Clone)]
+struct Config {
+    favicon: Option<String>,
+    port: u16,
+    endpoint: Vec<CustomSearch>,
+}
+
+/// Struct representing a single enpoint in the config file
+#[derive(Deserialize, Clone)]
 struct CustomSearch {
     endpoint: String,
     parse_rule: String,
@@ -25,65 +40,106 @@ struct CustomSearch {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut config_dir = std::env::home_dir().ok_or("No home dir in env")?;
+    create_missing_config()?;
 
-    config_dir.push(".config");
-    config_dir.push("custom_search");
+    let conf = get_config().ok_or("Could not read config file")?;
+    println!("Listening to port {}", conf.port);
+    rouille::start_server(
+        SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), conf.port),
+        move |req| {
+            // just returns a 404 since I need to return something from the log
+            rouille::log(req, std::io::stdout(), || Response::empty_404());
 
-    // if config dir doesn't exists then create it
-    if !std::path::Path::new(&config_dir).is_dir() {
-        std::fs::create_dir_all(&config_dir)?;
-    }
+            router!(req,
+                    (GET) ["/favicon.ico"] => {
+                        match get_favicon_ico() {
+                            Some(p) => p,
+                            None => Response::empty_404()
+                        }
+                    },
+                    (GET) ["/{endpoint}", endpoint: String] => {
+                        let query = req.get_param("q").unwrap_or(String::new());
 
-    let mut config_file = config_dir;
-    config_file.push("config.toml");
+                        match parse(endpoint,query){
+                            Ok(target) => Response::redirect_303(target),
+                            Err(err) => Response::html(&format!("{:?}", err)).with_status_code(404),
+                        }
+                    },
 
-    // if config file doesn't exists then create it
-    if !std::path::Path::new(&config_file).exists() {
-        std::fs::File::create(&config_file)?;
-    }
-
-    println!("listening to localhost:8000");
-    rouille::start_server("localhost:8000", move |req| {
-        router!(req,
-                (GET) (/{endpoint: String}) => {
-                    let query = req.get_param("q").unwrap_or(String::new());
-
-                    match parse(endpoint,query, &config_file){
-                        Ok(target) => Response::html(&format!("<script>window.location.href='{}'</script>", target)),
-                        Err(err) => Response::html(&format!("{:?}", err)).with_status_code(404),
-                    }
-                },
-
-            _ => Response::empty_404()
-        )
-    });
+                _ => Response::empty_404()
+            )
+        },
+    );
 }
 
-fn parse(ep: String, q: String, config_file: &PathBuf) -> Result<String, Box<dyn Error>> {
-    let mut config_str = String::new();
-    std::fs::File::open(config_file)?.read_to_string(&mut config_str)?;
+/// Get the entire config from the config file
+fn get_config() -> Option<Config> {
+    let path = config_file_path()?;
 
-    let enpoint_table: HashMap<String, Vec<CustomSearch>> = from_str(&config_str)?;
-    let endpoints = enpoint_table
-        .get("endpoint")
-        .ok_or("no endpoints in config file")?;
-    for CustomSearch {
-        endpoint,
-        parse_rule,
-        gen_rule,
-    } in endpoints
-    {
-        if endpoint == &ep {
-            let regex = Regex::new(&parse_rule)?;
-            if let Some(captures) = regex.captures(&q) {
-                let mut result = String::new();
-                captures.expand(&gen_rule, &mut result);
-                return Ok(result);
-            }
-            return Err("no captured groups".into());
-        }
+    let mut config_str = String::new();
+    std::fs::File::open(path)
+        .ok()?
+        .read_to_string(&mut config_str)
+        .ok()?;
+    return from_str(&config_str).ok();
+}
+
+/// Get the file path for the config file (`~/.config/custom_search/config.toml`)
+fn config_file_path() -> Option<PathBuf> {
+    let mut config_file = std::env::home_dir()?;
+    config_file.push(".config");
+    config_file.push("custom_search");
+    config_file.push("config.toml");
+    Some(config_file)
+}
+
+/// create the config dir/file if it's missing
+fn create_missing_config() -> Result<(), Box<dyn Error>> {
+    let path = config_file_path().ok_or("no home directory")?;
+
+    let dir_path = path.parent().ok_or("no config dir")?;
+
+    // if config dir doesn't exists then create it
+    if !std::path::Path::new(&dir_path).is_dir() {
+        std::fs::create_dir_all(&dir_path)?;
     }
 
-    Err("no matching enpoint".into())
+    // if config file doesn't exists then create it
+    if !std::path::Path::new(&path).exists() {
+        std::fs::File::create(&path)?;
+    }
+
+    Ok(())
+}
+
+/// Parse a query to an enpoint and generate a new query string to redirect to
+fn parse(ep: String, q: String) -> Result<String, Box<dyn Error>> {
+    let custom_search = get_enpoint_config(ep).ok_or("no config for endpoint")?;
+    let regex = Regex::new(&custom_search.parse_rule)?;
+    if let Some(captures) = regex.captures(&q) {
+        let mut result = String::new();
+        captures.expand(&custom_search.gen_rule, &mut result);
+        return Ok(result);
+    }
+    return Err("no captured groups".into());
+}
+
+/// Return the favicon as specified in the config file
+fn get_favicon_ico() -> Option<Response> {
+    let favicon_path = get_config()?.favicon?;
+    let file = File::open(favicon_path).ok()?;
+    println!("{:?}", file);
+    Some(Response::from_file("image/png", file))
+}
+
+/// Get config for a specific endpoint
+fn get_enpoint_config(ep: String) -> Option<CustomSearch> {
+    let config = get_config()?;
+
+    for custom_search in config.endpoint {
+        if custom_search.endpoint == ep {
+            return Some(custom_search.clone());
+        }
+    }
+    None
 }

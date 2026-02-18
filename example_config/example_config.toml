@@ -1,0 +1,26 @@
+favicon = "/home/user/.config/custom_search/eye-magnifying-glass-icon.png"
+port = 6969
+
+# simple search on docs rs (this is possible without this custom_search aswell)
+[[endpoint]]
+endpoint = "docrs"
+parse_rule = "(.+)"
+gen_rule = "https://docs.rs/releases/search?query=$1"
+
+# translate from one language to another using `@tr [<source>][<target>] <text>`
+[[endpoint]]
+endpoint = "translate"
+parse_rule = '\[(..)\]\[(..)\](.+)'
+gen_rule = "https://translate.google.com/?sl=$1&tl=$2&text=$3"
+
+# search in a specific subreddit using `@red [<sub>] <search>`
+[[endpoint]]
+endpoint = "reddit"
+parse_rule = '\[([^\]]+)\](.+)'
+gen_rule = "https://www.reddit.com/r/$1/search/?q=$2"
+
+# Search for directions using `@maps <from> -> <to>`
+[[endpoint]]
+endpoint = "maps"
+parse_rule = '(.+)->(.+)'
+gen_rule = "https://www.google.com/maps/dir/$1/$2"
