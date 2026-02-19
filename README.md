@@ -13,9 +13,25 @@ The Regex crate is used for:
 Regex capture groups are used to capture variables and regex expand is used to replace them in the query
 generation template.
 
+## Features
+### Implemented
+* Choose port in config file
+* Specify image to use as favicon
+* Match parts of query string using regex capture groups
+* Generate new query string using placeholders
+
+### Under Development
+* Scripting support for more complex url generation
+* Support for creating suggestion endpoints (opensearch)
+
+
 ## Example
+> This is just a small example, see the example config dir for a more fleshed out one
+
 The following may be added to `~/.config/custom_search/config.toml`:
 ```toml
+port = 8000
+
 [[endpoint]]
 endpoint = "translate"
 parse_rule = '\[(..)\]\[(..)\](.+)'

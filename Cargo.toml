@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 regex = "1.12.3"
+rhai = "1.24.0"
 rouille = "3.6.2"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "1.0.2"
+urlencoding = "2.1.3"

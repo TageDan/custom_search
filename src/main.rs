@@ -1,4 +1,5 @@
 use regex::Regex;
+use rhai::{Engine, EvalAltResult, Func};
 use rouille::{Response, router};
 use serde::Deserialize;
 use std::{
@@ -36,7 +37,13 @@ struct Config {
 struct CustomSearch {
     endpoint: String,
     parse_rule: String,
-    gen_rule: String,
+    gen_rule: GenRule,
+}
+
+#[derive(Deserialize, Clone)]
+enum GenRule {
+    Simple(String),
+    Script(PathBuf),
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -61,7 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let query = req.get_param("q").unwrap_or(String::new());
 
                         match parse(endpoint,query){
-                            Ok(target) => Response::redirect_303(target),
+                            Ok(target) => {Response::html(format!("<script>window.location.href='{target}'</script>"))},
                             Err(err) => Response::html(&format!("{:?}", err)).with_status_code(404),
                         }
                     },
@@ -118,10 +125,18 @@ fn parse(ep: String, q: String) -> Result<String, Box<dyn Error>> {
     let regex = Regex::new(&custom_search.parse_rule)?;
     if let Some(captures) = regex.captures(&q) {
         let mut result = String::new();
-        captures.expand(&custom_search.gen_rule, &mut result);
+        match custom_search.gen_rule {
+            GenRule::Simple(string) => captures.expand(&string, &mut result),
+            GenRule::Script(path) => result = run_query_script(path, captures),
+        }
         return Ok(result);
     }
     return Err("no captured groups".into());
+}
+
+/// run the rhai script specified by path using the capture groups as input and return the result.
+fn run_query_script(path: PathBuf, captures: regex::Captures<'_>) -> String {
+    todo!()
 }
 
 /// Return the favicon as specified in the config file
@@ -142,4 +157,31 @@ fn get_enpoint_config(ep: String) -> Option<CustomSearch> {
         }
     }
     None
+}
+
+type SuggestionFunc = Box<dyn Fn(Vec<String>) -> Result<String, Box<EvalAltResult>>>;
+
+/// get the rhai suggestion script specified by the path
+fn get_suggest_script(file: &PathBuf) -> Result<SuggestionFunc, Box<dyn Error>> {
+    let mut script_content = String::new();
+    File::open(file)?.read_to_string(&mut script_content)?;
+    let engine = Engine::new();
+    let func =
+        Func::<(Vec<String>,), String>::create_from_script(engine, &script_content, "suggest")?;
+    Ok(func)
+}
+
+type QueryFunc = Box<dyn Fn(Vec<String>) -> Result<String, Box<EvalAltResult>>>;
+
+/// get the rhai query generation script specified by the path
+fn get_query_script(file: &PathBuf) -> Result<QueryFunc, Box<dyn Error>> {
+    let mut script_content = String::new();
+    File::open(file)?.read_to_string(&mut script_content)?;
+    let engine = Engine::new();
+    let func = Func::<(Vec<String>,), String>::create_from_script(
+        engine,
+        &script_content,
+        "create_query",
+    )?;
+    Ok(func)
 }
