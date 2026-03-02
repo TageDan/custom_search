@@ -1,4 +1,4 @@
-favicon = "/home/user/.config/custom_search/eye-magnifying-glass-icon.png"
+favicon = "/home/tage/.config/custom_search/eye-magnifying-glass-icon.png"
 port = 6969
 
 # simple search on docs rs (this is possible without this custom_search aswell)
